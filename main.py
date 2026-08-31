@@ -3,7 +3,7 @@ from contextlib import asynccontextmanager
 
 import httpx
 from dotenv import load_dotenv
-from fastapi import FastAPI, Header, HTTPException, Request
+from fastapi import Depends, FastAPI, Header, HTTPException, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
@@ -66,6 +66,7 @@ def read_root():
             "/auth/logout",
             "/public/info",
             "/protected/profile",
+            "/protected/dashboard",
         ],
     }
 
@@ -109,20 +110,18 @@ def login(credentials: Credentials):
     }
 
 
-@app.get("/public/info", tags=["Public"])
-def public_info():
-    """Open lobby: no authentication needed."""
-    return {"message": "Welcome stranger! This info is public."}
-
-
-@app.get("/protected/profile", tags=["Protected"])
-def protected_profile(authorization: str | None = Header(default=None)):
-    """Read the caller's profile. Verifies the bearer token with Supabase."""
+def parse_bearer_token(authorization: str | None = Header(default=None)) -> str:
+    """Pull the bearer token from the Authorization header."""
     if not authorization or not authorization.lower().startswith("bearer "):
         raise HTTPException(status_code=401, detail="Access token required")
     token = authorization[7:].strip()
     if not token:
         raise HTTPException(status_code=401, detail="Access token required")
+    return token
+
+
+def require_user(token: str = Depends(parse_bearer_token)) -> dict:
+    """Reusable guard: verify the token with Supabase and return safe user metadata."""
     try:
         response = supabase.auth.get_user(token)
     except Exception:
@@ -131,3 +130,35 @@ def protected_profile(authorization: str | None = Header(default=None)):
     if user is None or getattr(user, "id", None) is None:
         raise HTTPException(status_code=401, detail="Invalid or expired token")
     return {"id": user.id, "email": user.email, "created_at": user.created_at}
+
+
+@app.get("/public/info", tags=["Public"])
+def public_info():
+    """Open lobby: no authentication needed."""
+    return {"message": "Welcome stranger! This info is public."}
+
+
+@app.get("/protected/profile", tags=["Protected"])
+def protected_profile(user: dict = Depends(require_user)):
+    """Read private profile data using the reusable guard."""
+    return user
+
+
+@app.get("/protected/dashboard", tags=["Protected"])
+def protected_dashboard(user: dict = Depends(require_user)):
+    """A second locked door behind the same guard — zero new auth code."""
+    return {
+        "message": f"Welcome to your dashboard, {user['email']}",
+        "user_id": user["id"],
+        "notes_count": 0,
+    }
+
+
+@app.post("/auth/logout", status_code=204, tags=["Auth"])
+def logout(token: str = Depends(parse_bearer_token), user: dict = Depends(require_user)):
+    """End the session by revoking tokens via Supabase admin sign_out."""
+    try:
+        supabase.auth.admin.sign_out(token)
+    except Exception:
+        pass
+    return None
