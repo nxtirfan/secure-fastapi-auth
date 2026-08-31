@@ -53,3 +53,14 @@ Click **Authorize** in Swagger UI, paste your JWT access token from `/auth/login
 - **Identity Provider**: Supabase Auth (`supabase-py`)
 - **Server**: Uvicorn
 - **Environment**: `python-dotenv`
+
+## AI vs Me (Stage 7 Rematch)
+
+An AI was prompted in `ai-version/prompt_v1.md` to build the same API. Testing its implementation (`ai-version/main_ai.py`) against our Stage 3 & 4 checkpoints revealed 3 key differences:
+
+1. **Token Extraction Crash**: The AI used naive string splitting (`authorization.split(" ")[1]`). Sending a malformed header like `Authorization: Bearer` or `Authorization: token` triggered an `IndexError`, returning **500 Internal Server Error** instead of **401 Unauthorized**. My code used `HTTPBearer` with safe scheme validation.
+2. **Stateless Logout Failure**: The AI called `supabase.auth.sign_out()` without token context, which relies on client-side session state rather than revoking the caller's JWT session statelessly.
+3. **Missing Swagger Padlock**: The AI omitted `HTTPBearer` security scheme integration, leaving `/docs` without the Authorize padlock.
+
+See [`ai-version/README.md`](ai-version/README.md) for full prompt evolution (V1 vs V2) and diff analysis.
+
