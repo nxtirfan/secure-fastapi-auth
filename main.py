@@ -3,7 +3,7 @@ from contextlib import asynccontextmanager
 
 import httpx
 from dotenv import load_dotenv
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import FastAPI, Header, HTTPException, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
@@ -107,3 +107,20 @@ def login(credentials: Credentials):
         "token_type": "bearer",
         "user": {"id": response.user.id, "email": response.user.email},
     }
+
+
+@app.get("/public/info", tags=["Public"])
+def public_info():
+    """Open lobby: no authentication needed."""
+    return {"message": "Welcome stranger! This info is public."}
+
+
+@app.get("/protected/profile", tags=["Protected"])
+def protected_profile(authorization: str | None = Header(default=None)):
+    """Read private profile data (token presence check only in Stage 2)."""
+    if not authorization or not authorization.lower().startswith("bearer "):
+        raise HTTPException(status_code=401, detail="Access token required")
+    token = authorization[7:].strip()
+    if not token:
+        raise HTTPException(status_code=401, detail="Access token required")
+    return {"message": "Token received. Verification comes in Stage 3."}
