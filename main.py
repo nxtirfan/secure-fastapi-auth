@@ -117,10 +117,17 @@ def public_info():
 
 @app.get("/protected/profile", tags=["Protected"])
 def protected_profile(authorization: str | None = Header(default=None)):
-    """Read private profile data (token presence check only in Stage 2)."""
+    """Read the caller's profile. Verifies the bearer token with Supabase."""
     if not authorization or not authorization.lower().startswith("bearer "):
         raise HTTPException(status_code=401, detail="Access token required")
     token = authorization[7:].strip()
     if not token:
         raise HTTPException(status_code=401, detail="Access token required")
-    return {"message": "Token received. Verification comes in Stage 3."}
+    try:
+        response = supabase.auth.get_user(token)
+    except Exception:
+        raise HTTPException(status_code=401, detail="Invalid or expired token")
+    user = response.user
+    if user is None or getattr(user, "id", None) is None:
+        raise HTTPException(status_code=401, detail="Invalid or expired token")
+    return {"id": user.id, "email": user.email, "created_at": user.created_at}
