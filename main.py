@@ -3,9 +3,10 @@ from contextlib import asynccontextmanager
 
 import httpx
 from dotenv import load_dotenv
-from fastapi import Depends, FastAPI, Header, HTTPException, Request
+from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import BaseModel
 from supabase import create_client
 
@@ -110,14 +111,14 @@ def login(credentials: Credentials):
     }
 
 
-def parse_bearer_token(authorization: str | None = Header(default=None)) -> str:
-    """Pull the bearer token from the Authorization header."""
-    if not authorization or not authorization.lower().startswith("bearer "):
+bearer_scheme = HTTPBearer(auto_error=False)
+
+
+def parse_bearer_token(authorization: HTTPAuthorizationCredentials | None = Depends(bearer_scheme)) -> str:
+    """Pull the bearer token from the Authorization header using FastAPI's HTTPBearer scheme."""
+    if authorization is None or authorization.scheme.lower() != "bearer" or not authorization.credentials:
         raise HTTPException(status_code=401, detail="Access token required")
-    token = authorization[7:].strip()
-    if not token:
-        raise HTTPException(status_code=401, detail="Access token required")
-    return token
+    return authorization.credentials
 
 
 def require_user(token: str = Depends(parse_bearer_token)) -> dict:
